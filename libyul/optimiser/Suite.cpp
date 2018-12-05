@@ -107,7 +107,9 @@ void OptimiserSuite::run(
 		RedundantAssignEliminator::run(ast);
 		VarDeclPropagator{}(ast);
 		RedundantAssignEliminator::run(ast);
+		Rematerialiser::run(ast);
 		UnusedPruner::runUntilStabilised(ast, reservedIdentifiers);
+		CommonSubexpressionEliminator{}(ast);
 	}
 	ExpressionJoiner::run(ast);
 	VarDeclPropagator{}(ast);
