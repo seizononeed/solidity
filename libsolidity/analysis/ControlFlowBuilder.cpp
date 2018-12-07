@@ -23,9 +23,9 @@ using namespace std;
 
 ControlFlowBuilder::ControlFlowBuilder(CFG::NodeContainer& _nodeContainer, FunctionFlow const& _functionFlow):
 	m_nodeContainer(_nodeContainer),
-	m_currentFunctionFlow(_functionFlow),
 	m_currentNode(_functionFlow.entry),
-	m_returnNode(_functionFlow.exit)
+	m_returnNode(_functionFlow.exit),
+	m_revertNode(_functionFlow.revert)
 {
 }
 
@@ -40,13 +40,6 @@ unique_ptr<FunctionFlow> ControlFlowBuilder::createFunctionFlow(
 	functionFlow->revert = _nodeContainer.newNode();
 	ControlFlowBuilder builder(_nodeContainer, *functionFlow);
 	builder.appendControlFlow(_function);
-
-	for (auto const& returnParameter: _function.returnParameters())
-		functionFlow->exit->block.variableOccurrences.emplace_back(
-			returnParameter.get(),
-			VariableOccurrence::Kind::Access,
-			returnParameter.get()
-		);
 
 	return functionFlow;
 }
@@ -211,8 +204,8 @@ bool ControlFlowBuilder::visit(Continue const&)
 bool ControlFlowBuilder::visit(Throw const&)
 {
 	solAssert(!!m_currentNode, "");
-	solAssert(!!m_currentFunctionFlow.revert, "");
-	connect(m_currentNode, m_currentFunctionFlow.revert);
+	solAssert(!!m_revertNode, "");
+	connect(m_currentNode, m_revertNode);
 	m_currentNode = newLabel();
 	return false;
 }
@@ -234,13 +227,11 @@ bool ControlFlowBuilder::visit(Return const& _return)
 {
 	solAssert(!!m_currentNode, "");
 	solAssert(!!m_returnNode, "");
-	solAssert(!m_currentNode->block.returnStatement, "");
-	m_currentNode->block.returnStatement = &_return;
 	if (_return.expression())
 	{
 		appendControlFlow(*_return.expression());
 		for (auto returnParameter: _return.annotation().functionReturnParameters->parameters())
-			m_currentNode->block.variableOccurrences.emplace_back(
+			m_currentNode->variableOccurrences.emplace_back(
 				returnParameter.get(),
 				VariableOccurrence::Kind::Assignment,
 				&_return
@@ -272,7 +263,7 @@ bool ControlFlowBuilder::visitNode(ASTNode const& node)
 		for (auto const& ref: assembly->annotation().externalReferences)
 		{
 			if (auto variableDeclaration = dynamic_cast<VariableDeclaration const*>(ref.second.declaration))
-				m_currentNode->block.variableOccurrences.emplace_back(
+				m_currentNode->variableOccurrences.emplace_back(
 					variableDeclaration,
 					VariableOccurrence::Kind::InlineAssembly,
 					&node
@@ -280,13 +271,13 @@ bool ControlFlowBuilder::visitNode(ASTNode const& node)
 		}
 	else if (auto const* variableDeclaration = dynamic_cast<VariableDeclaration const*>(&node))
 	{
-		m_currentNode->block.variableOccurrences.emplace_back(
+		m_currentNode->variableOccurrences.emplace_back(
 			variableDeclaration,
 			VariableOccurrence::Kind::Declaration,
 			variableDeclaration
 		);
 		if (variableDeclaration->value() || (variableDeclaration->isCallableParameter() && !variableDeclaration->isReturnParameter()))
-			m_currentNode->block.variableOccurrences.emplace_back(
+			m_currentNode->variableOccurrences.emplace_back(
 				variableDeclaration,
 				VariableOccurrence::Kind::Assignment,
 				variableDeclaration->value().get()
@@ -294,7 +285,7 @@ bool ControlFlowBuilder::visitNode(ASTNode const& node)
 	}
 	else if (auto const* identifier = dynamic_cast<Identifier const*>(&node))
 		if (auto const* variableDeclaration = dynamic_cast<VariableDeclaration const*>(identifier->annotation().referencedDeclaration))
-			m_currentNode->block.variableOccurrences.emplace_back(
+			m_currentNode->variableOccurrences.emplace_back(
 				variableDeclaration,
 				static_cast<Expression const*>(identifier)->annotation().lValueRequested ?
 					VariableOccurrence::Kind::Assignment :
@@ -314,19 +305,19 @@ bool ControlFlowBuilder::visit(FunctionCall const& _functionCall)
 		switch (functionType->kind())
 		{
 			case FunctionType::Kind::Revert:
-				solAssert(!!m_currentFunctionFlow.revert, "");
+				solAssert(!!m_revertNode, "");
 				_functionCall.expression().accept(*this);
 				ASTNode::listAccept(_functionCall.arguments(), *this);
-				connect(m_currentNode, m_currentFunctionFlow.revert);
+				connect(m_currentNode, m_revertNode);
 				m_currentNode = newLabel();
 				return false;
 			case FunctionType::Kind::Require:
 			case FunctionType::Kind::Assert:
 			{
-				solAssert(!!m_currentFunctionFlow.revert, "");
+				solAssert(!!m_revertNode, "");
 				_functionCall.expression().accept(*this);
 				ASTNode::listAccept(_functionCall.arguments(), *this);
-				connect(m_currentNode, m_currentFunctionFlow.revert);
+				connect(m_currentNode, m_revertNode);
 				auto nextNode = newLabel();
 				connect(m_currentNode, nextNode);
 				m_currentNode = nextNode;
@@ -372,7 +363,15 @@ bool ControlFlowBuilder::visit(FunctionDefinition const& _functionDefinition)
 		appendControlFlow(*parameter);
 
 	for (auto const& returnParameter: _functionDefinition.returnParameters())
+	{
 		appendControlFlow(*returnParameter);
+		m_returnNode->variableOccurrences.emplace_back(
+			returnParameter.get(),
+			VariableOccurrence::Kind::Access,
+			returnParameter.get()
+		);
+
+	}
 
 	for (auto const& modifier: _functionDefinition.modifiers())
 		appendControlFlow(*modifier);

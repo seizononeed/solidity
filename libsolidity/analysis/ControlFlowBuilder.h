@@ -112,13 +112,9 @@ private:
 
 	CFG::NodeContainer& m_nodeContainer;
 
-	/// The control flow of the function that is currently parsed.
-	/// Note: this can also be a ModifierFlow
-	FunctionFlow const& m_currentFunctionFlow;
-
 	CFGNode* m_currentNode = nullptr;
-
 	CFGNode* m_returnNode = nullptr;
+	CFGNode* m_revertNode = nullptr;
 
 	/// The current jump destination of break Statements.
 	CFGNode* m_breakJump = nullptr;

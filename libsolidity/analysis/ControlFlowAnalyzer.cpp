@@ -57,7 +57,7 @@ void ControlFlowAnalyzer::checkUnassignedStorageReturnValues(
 
 		auto& unassignedAtNode = unassigned[node];
 
-		for (auto const& variableOccurrence: node->block.variableOccurrences)
+		for (auto const& variableOccurrence: node->variableOccurrences)
 		{
 			switch (variableOccurrence.kind())
 			{

@@ -56,22 +56,6 @@ private:
 	ASTNode const* m_occurrence = nullptr;
 };
 
-/** Basic Control Flow Block.
- * Basic block of control flow. Consists of a set of (unordered) AST nodes
- * for which control flow is always linear. A basic control flow block
- * encompasses at most one scope. Reverts are considered to break the control
- * flow.
- * @todo Handle function calls correctly. So far function calls are not considered
- * to change the control flow.
- */
-struct ControlFlowBlock
-{
-	std::vector<VariableOccurrence> variableOccurrences;
-	/// If control flow returns in this node, the return statement is stored in returnStatement,
-	/// otherwise returnStatement is nullptr.
-	Return const* returnStatement = nullptr;
-};
-
 /** Node of the Control Flow Graph.
   * The control flow is a directed graph connecting control flow blocks.
   * An arc between two nodes indicates that the control flow can possibly
@@ -84,8 +68,8 @@ struct CFGNode
 	/// Exit nodes. All CFG nodes to which control flow may continue after this node.
 	std::vector<CFGNode*> exits;
 
-	/// Control flow in the node.
-	ControlFlowBlock block;
+	/// Variable occurrences in the node.
+	std::vector<VariableOccurrence> variableOccurrences;
 };
 
 /** Describes the control flow of a function. */
