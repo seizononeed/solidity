@@ -810,19 +810,25 @@ Arrays can have a compile-time fixed size, or they can have a dynamic size.
 An array of fixed size ``k`` and element type ``T`` is written as ``T[k]``,
 and an array of dynamic size as ``T[]``.
 
-For example, an array of 5 dynamic arrays of ``uint`` as ``uint[][5]``,
-the notation is reversed compared to some other languages.
+For example, an array of 5 dynamic arrays of ``uint`` is written as
+``uint[][5]``. The notation is reversed compared to some other languages, as in
+Solidity, ``X[3]`` is always an array containing three elements of type ``X``,
+even if ``X`` is itself an array. This is not the case in other languages such
+as C.
 
-Indices are zero-based, and access is in the opposite direction of the declaration.
-For example to access the second uint in the third dynamic array, use ``x[2][1]``,
-and to access the third dynamic array, use ``x[2]``
+Indices are zero-based, and access is in the opposite direction of the
+declaration.
+For example to access the second ``uint`` in the third dynamic array, use
+``unit[2][1]``, and to access the third dynamic array, use ``unit[2]``. Again,
+if you have an array ``T[5] a`` for a type ``T`` that can also be an array,
+then ``a[2]`` always has type ``T``.
 
-Array elements can be of any type, including mapping or a struct. The general
+Array elements can be of any type, including mapping or struct. The general
 restrictions for types apply, in that mappings can only be stored in the
 storage data location and publicly-visible functions need parameters that are :ref:`ABI types <ABI>`.
 
-Accessing an array past its end causes a revert, use the ``.push()`` method or
-increase the ``.length`` :ref:`member <members>` to add elements.
+Accessing an array past its end causes a failing assertion, use the ``.push()``
+method or increase the ``.length`` :ref:`member <array-members>` to add elements.
 
 Variables of type ``bytes`` and ``string`` are special arrays. A ``bytes`` is similar to ``byte[]``,
 but it is packed tightly in calldata and memory. ``string`` is equal to ``bytes`` but does not allow
@@ -914,10 +920,10 @@ complications because of how arrays are passed in the ABI.
 
 .. index:: ! array;length, length, push, pop, !array;push, !array;pop
 
-.. _members:
+.. _array-members:
 
-Members
-^^^^^^^
+Array Members
+^^^^^^^^^^^^^
 
 **length**:
     Arrays have a ``length`` member that contains their number of elements.
