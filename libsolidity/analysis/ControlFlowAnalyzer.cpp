@@ -41,10 +41,11 @@ bool ControlFlowAnalyzer::visit(FunctionDefinition const& _function)
 void ControlFlowAnalyzer::checkUnassignedStorageReturnValues(
 	FunctionDefinition const&,// _function,
 	CFGNode const* _functionEntry,
-	CFGNode const* //_functionExit
+	CFGNode const* _functionExit
 ) const
 {
 	map<CFGNode const*, set<VariableDeclaration const*>> unassigned;
+	map<CFGNode const*, set<VariableOccurrence const*>> unassignedAccess;
 	stack<CFGNode const*> nodesToTraverse;
 	nodesToTraverse.push(_functionEntry);
 
@@ -73,12 +74,7 @@ void ControlFlowAnalyzer::checkUnassignedStorageReturnValues(
 					if (unassignedAtNode.count(variableOccurrence.declaration()))
 					{
 						if (variableOccurrence.declaration()->type()->dataStoredIn(DataLocation::Storage))
-						{
-							m_errorReporter.typeError(
-								variableOccurrence.occurrence()->location(),
-								"This variable is of storage pointer type and is accessed without prior assignment."
-							);
-						}
+							unassignedAccess[node].insert(&variableOccurrence);
 					}
 					break;
 				case VariableOccurrence::Kind::Declaration:
@@ -89,13 +85,50 @@ void ControlFlowAnalyzer::checkUnassignedStorageReturnValues(
 
 		for (auto const& exit: node->exits)
 		{
-			auto& unassignedAtExit = unassigned[exit];
-			auto oldSize = unassignedAtExit.size();
-			unassignedAtExit.insert(unassignedAtNode.begin(), unassignedAtNode.end());
-			// (re)traverse an exit, if we are on a path with new unassigned return values to consider
-			// this will terminate, since there is only a finite number of unassigned return values
-			if (unassignedAtExit.size() > oldSize)
+			bool needToTraverse = false;
+			{
+				auto& unassignedAtExit = unassigned[exit];
+				auto oldSize = unassignedAtExit.size();
+				unassignedAtExit.insert(unassignedAtNode.begin(), unassignedAtNode.end());
+				if (unassignedAtExit.size() > oldSize)
+					needToTraverse = true;
+			}
+			{
+				auto &unassignedAccessAtExit = unassignedAccess[exit];
+				auto oldSize = unassignedAccessAtExit.size();
+				unassignedAccessAtExit += unassignedAccess[node];
+				if (unassignedAccessAtExit.size() > oldSize)
+					needToTraverse = true;
+			}
+			if (needToTraverse)
 				nodesToTraverse.push(exit);
+		}
+	}
+
+	if (!unassignedAccess[_functionExit].empty())
+	{
+		vector<VariableOccurrence const *> unassignedAccessOrdered(
+			unassignedAccess[_functionExit].begin(),
+			unassignedAccess[_functionExit].end()
+		);
+		sort(
+			unassignedAccessOrdered.begin(),
+			unassignedAccessOrdered.end(),
+			[](VariableOccurrence const *lhs, VariableOccurrence const *rhs) -> bool
+			{
+				if (lhs->occurrence()->id() < rhs->occurrence()->id()) return true;
+				if (rhs->occurrence()->id() < lhs->occurrence()->id()) return false;
+				if (lhs->declaration()->id() < rhs->declaration()->id()) return true;
+				if (rhs->declaration()->id() < lhs->declaration()->id()) return false;
+				return static_cast<size_t>(lhs->kind()) < static_cast<size_t>(rhs->kind());
+			}
+		);
+		for (auto const* variableOccurrence: unassignedAccessOrdered)
+		{
+			m_errorReporter.typeError(
+				variableOccurrence->occurrence()->location(),
+				"This variable is of storage pointer type and is accessed without prior assignment."
+			);
 		}
 	}
 }

@@ -67,15 +67,6 @@ private:
 struct ControlFlowBlock
 {
 	std::vector<VariableOccurrence> variableOccurrences;
-/*	enum class DeclarationReferenceType
-	{
-		Declaration,
-		Access,
-		Assignment,
-		InlineAssembly
-	};
-	/// References to declarations in this control flow block in order of execution and the type of reference.
-	std::vector<std::pair<Declaration const*, DeclarationReferenceType>> declarationReferences;*/
 	/// If control flow returns in this node, the return statement is stored in returnStatement,
 	/// otherwise returnStatement is nullptr.
 	Return const* returnStatement = nullptr;
@@ -114,19 +105,6 @@ struct FunctionFlow
 	CFGNode* revert = nullptr;
 };
 
-/** Describes the control flow of a modifier.
- * Every placeholder breaks the control flow. The node preceding the
- * placeholder is assigned placeholderEntry as exit and the node
- * following the placeholder is assigned placeholderExit as entry.
- */
-struct ModifierFlow: FunctionFlow
-{
-	/// Control flow leading towards a placeholder exit in placeholderEntry.
-	CFGNode* placeholderEntry = nullptr;
-	/// Control flow coming from a placeholder enter from placeholderExit.
-	CFGNode* placeholderExit = nullptr;
-};
-
 class CFG: private ASTConstVisitor
 {
 public:
@@ -134,7 +112,6 @@ public:
 
 	bool constructFlow(ASTNode const& _astRoot);
 
-	bool visit(ModifierDefinition const& _modifier) override;
 	bool visit(FunctionDefinition const& _function) override;
 
 	FunctionFlow const& functionFlow(FunctionDefinition const& _function) const;
@@ -147,20 +124,6 @@ public:
 		std::vector<std::unique_ptr<CFGNode>> m_nodes;
 	};
 private:
-	/// Initially the control flow for all functions *ignoring* modifiers and for
-	/// all modifiers is constructed. Afterwards the control flow of functions
-	/// is adjusted by applying all modifiers.
-	void applyModifiers();
-
-	/// Creates a copy of the modifier flow @a _modifierFlow, while replacing the
-	/// placeholder entry and exit with the function entry and exit, as well as
-	/// replacing the modifier revert node with the function's revert node.
-	/// The resulting control flow is the new function flow with the modifier applied.
-	/// @a _functionFlow is updated in-place.
-	void applyModifierFlowToFunctionFlow(
-		ModifierFlow const& _modifierFlow,
-		FunctionFlow* _functionFlow
-	);
 
 	langutil::ErrorReporter& m_errorReporter;
 
@@ -170,7 +133,6 @@ private:
 	NodeContainer m_nodeContainer;
 
 	std::map<FunctionDefinition const*, std::unique_ptr<FunctionFlow>> m_functionControlFlow;
-	std::map<ModifierDefinition const*, std::unique_ptr<ModifierFlow>> m_modifierControlFlow;
 };
 
 }

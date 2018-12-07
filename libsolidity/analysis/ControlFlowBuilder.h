@@ -38,10 +38,6 @@ public:
 		CFG::NodeContainer& _nodeContainer,
 		FunctionDefinition const& _function
 	);
-	static std::unique_ptr<ModifierFlow> createModifierFlow(
-		CFG::NodeContainer& _nodeContainer,
-		ModifierDefinition const& _modifier
-	);
 
 private:
 	explicit ControlFlowBuilder(CFG::NodeContainer& _nodeContainer, FunctionFlow const& _functionFlow);
@@ -60,6 +56,7 @@ private:
 	bool visit(PlaceholderStatement const&) override;
 	bool visit(FunctionCall const& _functionCall) override;
 	bool visit(ModifierInvocation const& _modifierInvocation) override;
+	bool visit(FunctionDefinition const& _functionDefinition) override;
 
 
 	/// Appends the control flow of @a _node to the current control flow.
@@ -121,10 +118,15 @@ private:
 
 	CFGNode* m_currentNode = nullptr;
 
+	CFGNode* m_returnNode = nullptr;
+
 	/// The current jump destination of break Statements.
 	CFGNode* m_breakJump = nullptr;
 	/// The current jump destination of continue Statements.
 	CFGNode* m_continueJump = nullptr;
+
+	CFGNode* m_placeholderEntry = nullptr;
+	CFGNode* m_placeholderExit = nullptr;
 
 	/// Helper class that replaces the break and continue jump destinations for the
 	/// current scope and restores the originals at the end of the scope.

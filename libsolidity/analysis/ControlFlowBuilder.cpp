@@ -22,7 +22,10 @@ using namespace solidity;
 using namespace std;
 
 ControlFlowBuilder::ControlFlowBuilder(CFG::NodeContainer& _nodeContainer, FunctionFlow const& _functionFlow):
-	m_nodeContainer(_nodeContainer), m_currentFunctionFlow(_functionFlow), m_currentNode(_functionFlow.entry)
+	m_nodeContainer(_nodeContainer),
+	m_currentFunctionFlow(_functionFlow),
+	m_currentNode(_functionFlow.entry),
+	m_returnNode(_functionFlow.exit)
 {
 }
 
@@ -37,32 +40,15 @@ unique_ptr<FunctionFlow> ControlFlowBuilder::createFunctionFlow(
 	functionFlow->revert = _nodeContainer.newNode();
 	ControlFlowBuilder builder(_nodeContainer, *functionFlow);
 	builder.appendControlFlow(_function);
-	connect(builder.m_currentNode, functionFlow->exit);
-	for (auto returnParameter: _function.returnParameters())
+
+	for (auto const& returnParameter: _function.returnParameters())
 		functionFlow->exit->block.variableOccurrences.emplace_back(
 			returnParameter.get(),
 			VariableOccurrence::Kind::Access,
 			returnParameter.get()
 		);
+
 	return functionFlow;
-}
-
-
-unique_ptr<ModifierFlow> ControlFlowBuilder::createModifierFlow(
-	CFG::NodeContainer& _nodeContainer,
-	ModifierDefinition const& _modifier
-)
-{
-	auto modifierFlow = unique_ptr<ModifierFlow>(new ModifierFlow());
-	modifierFlow->entry = _nodeContainer.newNode();
-	modifierFlow->exit = _nodeContainer.newNode();
-	modifierFlow->revert = _nodeContainer.newNode();
-	modifierFlow->placeholderEntry = _nodeContainer.newNode();
-	modifierFlow->placeholderExit = _nodeContainer.newNode();
-	ControlFlowBuilder builder(_nodeContainer, *modifierFlow);
-	builder.appendControlFlow(_modifier);
-	connect(builder.m_currentNode, modifierFlow->exit);
-	return modifierFlow;
 }
 
 bool ControlFlowBuilder::visit(BinaryOperation const& _operation)
@@ -247,7 +233,7 @@ void ControlFlowBuilder::endVisit(Block const&)
 bool ControlFlowBuilder::visit(Return const& _return)
 {
 	solAssert(!!m_currentNode, "");
-	solAssert(!!m_currentFunctionFlow.exit, "");
+	solAssert(!!m_returnNode, "");
 	solAssert(!m_currentNode->block.returnStatement, "");
 	m_currentNode->block.returnStatement = &_return;
 	if (_return.expression())
@@ -260,7 +246,7 @@ bool ControlFlowBuilder::visit(Return const& _return)
 				&_return
 			);
 	}
-	connect(m_currentNode, m_currentFunctionFlow.exit);
+	connect(m_currentNode, m_returnNode);
 	m_currentNode = newLabel();
 	return true;
 }
@@ -269,14 +255,12 @@ bool ControlFlowBuilder::visit(Return const& _return)
 bool ControlFlowBuilder::visit(PlaceholderStatement const&)
 {
 	solAssert(!!m_currentNode, "");
-	auto modifierFlow = dynamic_cast<ModifierFlow const*>(&m_currentFunctionFlow);
-	solAssert(!!modifierFlow, "");
+	solAssert(!!m_placeholderEntry, "");
+	solAssert(!!m_placeholderExit, "");
 
-	connect(m_currentNode, modifierFlow->placeholderEntry);
-
+	connect(m_currentNode, m_placeholderEntry);
 	m_currentNode = newLabel();
-
-	connect(modifierFlow->placeholderExit, m_currentNode);
+	connect(m_placeholderExit, m_currentNode);
 	return false;
 }
 
@@ -354,10 +338,51 @@ bool ControlFlowBuilder::visit(FunctionCall const& _functionCall)
 	return ASTConstVisitor::visit(_functionCall);
 }
 
-bool ControlFlowBuilder::visit(const dev::solidity::ModifierInvocation &_modifierInvocation)
+bool ControlFlowBuilder::visit(ModifierInvocation const& _modifierInvocation)
 {
-	// TODO
-	return ASTConstVisitor::visit(_modifierInvocation);
+	if (auto arguments = _modifierInvocation.arguments())
+		for (auto& argument: *arguments)
+			appendControlFlow(*argument);
+
+	auto modifierDefinition = dynamic_cast<ModifierDefinition const*>(
+		_modifierInvocation.name()->annotation().referencedDeclaration
+	);
+	if (!modifierDefinition) return false;
+	solAssert(!!modifierDefinition, "");
+	solAssert(!!m_returnNode, "");
+
+	m_placeholderEntry = newLabel();
+	m_placeholderExit = newLabel();
+
+	appendControlFlow(*modifierDefinition);
+	connect(m_currentNode, m_returnNode);
+
+	m_currentNode = m_placeholderEntry;
+	m_returnNode = m_placeholderExit;
+
+	m_placeholderEntry = nullptr;
+	m_placeholderExit = nullptr;
+
+	return false;
+}
+
+bool ControlFlowBuilder::visit(FunctionDefinition const& _functionDefinition)
+{
+	for(auto const& parameter: _functionDefinition.parameters())
+		appendControlFlow(*parameter);
+
+	for (auto const& returnParameter: _functionDefinition.returnParameters())
+		appendControlFlow(*returnParameter);
+
+	for (auto const& modifier: _functionDefinition.modifiers())
+		appendControlFlow(*modifier);
+
+	appendControlFlow(_functionDefinition.body());
+
+	connect(m_currentNode, m_returnNode);
+	m_currentNode = nullptr;
+
+	return false;
 }
 
 void ControlFlowBuilder::appendControlFlow(ASTNode const& _node)
