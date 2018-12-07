@@ -38,55 +38,13 @@ bool ControlFlowAnalyzer::visit(FunctionDefinition const& _function)
 	return false;
 }
 
-set<VariableDeclaration const*> ControlFlowAnalyzer::variablesAssignedInNode(CFGNode const *node)
-{
-	set<VariableDeclaration const*> result;
-	for (auto expression: node->block.expressions)
-	{
-		if (auto const* assignment = dynamic_cast<Assignment const*>(expression))
-		{
-			stack<Expression const*> expressions;
-			expressions.push(&assignment->leftHandSide());
-			while (!expressions.empty())
-			{
-				Expression const* expression = expressions.top();
-				expressions.pop();
-
-				if (auto const *tuple = dynamic_cast<TupleExpression const*>(expression))
-					for (auto const& component: tuple->components())
-						expressions.push(component.get());
-				else if (auto const* identifier = dynamic_cast<Identifier const*>(expression))
-					if (auto const* variableDeclaration = dynamic_cast<VariableDeclaration const*>(
-						identifier->annotation().referencedDeclaration
-					))
-						result.insert(variableDeclaration);
-			}
-		}
-	}
-	return result;
-}
-
 void ControlFlowAnalyzer::checkUnassignedStorageReturnValues(
-	FunctionDefinition const& _function,
+	FunctionDefinition const&,// _function,
 	CFGNode const* _functionEntry,
-	CFGNode const* _functionExit
+	CFGNode const* //_functionExit
 ) const
 {
-	if (_function.returnParameterList()->parameters().empty())
-		return;
-
 	map<CFGNode const*, set<VariableDeclaration const*>> unassigned;
-
-	{
-		auto& unassignedAtFunctionEntry = unassigned[_functionEntry];
-		for (auto const& returnParameter: _function.returnParameterList()->parameters())
-			if (
-				returnParameter->type()->dataStoredIn(DataLocation::Storage) ||
-				returnParameter->type()->category() == Type::Category::Mapping
-			)
-				unassignedAtFunctionEntry.insert(returnParameter.get());
-	}
-
 	stack<CFGNode const*> nodesToTraverse;
 	nodesToTraverse.push(_functionEntry);
 
@@ -98,21 +56,35 @@ void ControlFlowAnalyzer::checkUnassignedStorageReturnValues(
 
 		auto& unassignedAtNode = unassigned[node];
 
-		if (node->block.returnStatement != nullptr)
-			if (node->block.returnStatement->expression())
-				unassignedAtNode.clear();
-		if (!unassignedAtNode.empty())
+		for (auto const& variableOccurrence: node->block.variableOccurrences)
 		{
-			// kill all return values to which a value is assigned
-			for (auto const* variableDeclaration: variablesAssignedInNode(node))
-				unassignedAtNode.erase(variableDeclaration);
-
-			// kill all return values referenced in inline assembly
-			// a reference is enough, checking whether there actually was an assignment might be overkill
-			for (auto assembly: node->block.inlineAssemblyStatements)
-				for (auto const& ref: assembly->annotation().externalReferences)
-					if (auto variableDeclaration = dynamic_cast<VariableDeclaration const*>(ref.second.declaration))
-						unassignedAtNode.erase(variableDeclaration);
+			switch (variableOccurrence.kind())
+			{
+				case VariableOccurrence::Kind::Assignment:
+					unassignedAtNode.erase(variableOccurrence.declaration());
+					break;
+				case VariableOccurrence::Kind::InlineAssembly:
+					// Kill all return values referenced in inline assembly.
+					// So far a reference is enough, but we might want to check whether
+					// there actually was an assignment at some point.
+					unassignedAtNode.erase(variableOccurrence.declaration());
+					break;
+				case VariableOccurrence::Kind::Access:
+					if (unassignedAtNode.count(variableOccurrence.declaration()))
+					{
+						if (variableOccurrence.declaration()->type()->dataStoredIn(DataLocation::Storage))
+						{
+							m_errorReporter.typeError(
+								variableOccurrence.occurrence()->location(),
+								"This variable is of storage pointer type and is accessed without prior assignment."
+							);
+						}
+					}
+					break;
+				case VariableOccurrence::Kind::Declaration:
+					unassignedAtNode.insert(variableOccurrence.declaration());
+					break;
+			}
 		}
 
 		for (auto const& exit: node->exits)
@@ -124,41 +96,6 @@ void ControlFlowAnalyzer::checkUnassignedStorageReturnValues(
 			// this will terminate, since there is only a finite number of unassigned return values
 			if (unassignedAtExit.size() > oldSize)
 				nodesToTraverse.push(exit);
-		}
-	}
-
-	if (!unassigned[_functionExit].empty())
-	{
-		vector<VariableDeclaration const*> unassignedOrdered(
-			unassigned[_functionExit].begin(),
-			unassigned[_functionExit].end()
-		);
-		sort(
-			unassignedOrdered.begin(),
-			unassignedOrdered.end(),
-			[](VariableDeclaration const* lhs, VariableDeclaration const* rhs) -> bool {
-				return lhs->id() < rhs->id();
-			}
-		);
-		for (auto const* returnVal: unassignedOrdered)
-		{
-			SecondarySourceLocation ssl;
-			for (CFGNode* lastNodeBeforeExit: _functionExit->entries)
-				if (unassigned[lastNodeBeforeExit].count(returnVal))
-				{
-					if (!!lastNodeBeforeExit->block.returnStatement)
-						ssl.append("Problematic return:", lastNodeBeforeExit->block.returnStatement->location());
-					else
-						ssl.append("Problematic end of function:", _function.location());
-				}
-
-			m_errorReporter.typeError(
-				returnVal->location(),
-				ssl,
-				"This variable is of storage pointer type and might be returned without assignment and "
-				"could be used uninitialized. Assign the variable (potentially from itself) "
-				"to fix this error."
-			);
 		}
 	}
 }

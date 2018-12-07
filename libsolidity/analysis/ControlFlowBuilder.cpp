@@ -38,6 +38,12 @@ unique_ptr<FunctionFlow> ControlFlowBuilder::createFunctionFlow(
 	ControlFlowBuilder builder(_nodeContainer, *functionFlow);
 	builder.appendControlFlow(_function);
 	connect(builder.m_currentNode, functionFlow->exit);
+	for (auto returnParameter: _function.returnParameters())
+		functionFlow->exit->block.variableOccurrences.emplace_back(
+			returnParameter.get(),
+			VariableOccurrence::Kind::Access,
+			returnParameter.get()
+		);
 	return functionFlow;
 }
 
@@ -244,6 +250,16 @@ bool ControlFlowBuilder::visit(Return const& _return)
 	solAssert(!!m_currentFunctionFlow.exit, "");
 	solAssert(!m_currentNode->block.returnStatement, "");
 	m_currentNode->block.returnStatement = &_return;
+	if (_return.expression())
+	{
+		appendControlFlow(*_return.expression());
+		for (auto returnParameter: _return.annotation().functionReturnParameters->parameters())
+			m_currentNode->block.variableOccurrences.emplace_back(
+				returnParameter.get(),
+				VariableOccurrence::Kind::Assignment,
+				&_return
+			);
+	}
 	connect(m_currentNode, m_currentFunctionFlow.exit);
 	m_currentNode = newLabel();
 	return true;
@@ -267,12 +283,40 @@ bool ControlFlowBuilder::visit(PlaceholderStatement const&)
 bool ControlFlowBuilder::visitNode(ASTNode const& node)
 {
 	solAssert(!!m_currentNode, "");
-	if (auto const* expression = dynamic_cast<Expression const*>(&node))
-		m_currentNode->block.expressions.emplace_back(expression);
+
+	if (auto const* assembly = dynamic_cast<InlineAssembly const*>(&node))
+		for (auto const& ref: assembly->annotation().externalReferences)
+		{
+			if (auto variableDeclaration = dynamic_cast<VariableDeclaration const*>(ref.second.declaration))
+				m_currentNode->block.variableOccurrences.emplace_back(
+					variableDeclaration,
+					VariableOccurrence::Kind::InlineAssembly,
+					&node
+				);
+		}
 	else if (auto const* variableDeclaration = dynamic_cast<VariableDeclaration const*>(&node))
-		m_currentNode->block.variableDeclarations.emplace_back(variableDeclaration);
-	else if (auto const* assembly = dynamic_cast<InlineAssembly const*>(&node))
-		m_currentNode->block.inlineAssemblyStatements.emplace_back(assembly);
+	{
+		m_currentNode->block.variableOccurrences.emplace_back(
+			variableDeclaration,
+			VariableOccurrence::Kind::Declaration,
+			variableDeclaration
+		);
+		if (variableDeclaration->value() || (variableDeclaration->isCallableParameter() && !variableDeclaration->isReturnParameter()))
+			m_currentNode->block.variableOccurrences.emplace_back(
+				variableDeclaration,
+				VariableOccurrence::Kind::Assignment,
+				variableDeclaration->value().get()
+			);
+	}
+	else if (auto const* identifier = dynamic_cast<Identifier const*>(&node))
+		if (auto const* variableDeclaration = dynamic_cast<VariableDeclaration const*>(identifier->annotation().referencedDeclaration))
+			m_currentNode->block.variableOccurrences.emplace_back(
+				variableDeclaration,
+				static_cast<Expression const*>(identifier)->annotation().lValueRequested ?
+					VariableOccurrence::Kind::Assignment :
+					VariableOccurrence::Kind::Access,
+					identifier
+			);
 
 	return true;
 }
@@ -308,6 +352,12 @@ bool ControlFlowBuilder::visit(FunctionCall const& _functionCall)
 				break;
 		}
 	return ASTConstVisitor::visit(_functionCall);
+}
+
+bool ControlFlowBuilder::visit(const dev::solidity::ModifierInvocation &_modifierInvocation)
+{
+	// TODO
+	return ASTConstVisitor::visit(_modifierInvocation);
 }
 
 void ControlFlowBuilder::appendControlFlow(ASTNode const& _node)

@@ -59,6 +59,7 @@ private:
 	bool visit(Return const& _return) override;
 	bool visit(PlaceholderStatement const&) override;
 	bool visit(FunctionCall const& _functionCall) override;
+	bool visit(ModifierInvocation const& _modifierInvocation) override;
 
 
 	/// Appends the control flow of @a _node to the current control flow.

@@ -37,7 +37,6 @@ public:
 	bool visit(FunctionDefinition const& _function) override;
 
 private:
-	static std::set<VariableDeclaration const*> variablesAssignedInNode(CFGNode const *node);
 	void checkUnassignedStorageReturnValues(
 		FunctionDefinition const& _function,
 		CFGNode const* _functionEntry,

@@ -31,6 +31,31 @@ namespace dev
 namespace solidity
 {
 
+class VariableOccurrence
+{
+public:
+	enum class Kind
+	{
+		Declaration,
+		Access,
+		Assignment,
+		InlineAssembly
+	};
+	VariableOccurrence(VariableDeclaration const* _declaration, Kind _kind, ASTNode const* _occurrence):
+		m_declaration(_declaration), m_occurrenceKind(_kind), m_occurrence(_occurrence)
+	{
+	}
+
+	VariableDeclaration const* declaration() const { return m_declaration; }
+	Kind kind() const { return m_occurrenceKind; };
+	ASTNode const* occurrence() const { return m_occurrence; }
+
+private:
+	VariableDeclaration const* m_declaration = nullptr;
+	Kind m_occurrenceKind = Kind::Access;
+	ASTNode const* m_occurrence = nullptr;
+};
+
 /** Basic Control Flow Block.
  * Basic block of control flow. Consists of a set of (unordered) AST nodes
  * for which control flow is always linear. A basic control flow block
@@ -41,12 +66,16 @@ namespace solidity
  */
 struct ControlFlowBlock
 {
-	/// All variable declarations inside this control flow block.
-	std::vector<VariableDeclaration const*> variableDeclarations;
-	/// All expressions inside this control flow block (this includes all subexpressions!).
-	std::vector<Expression const*> expressions;
-	/// All inline assembly statements inside in this control flow block.
-	std::vector<InlineAssembly const*> inlineAssemblyStatements;
+	std::vector<VariableOccurrence> variableOccurrences;
+/*	enum class DeclarationReferenceType
+	{
+		Declaration,
+		Access,
+		Assignment,
+		InlineAssembly
+	};
+	/// References to declarations in this control flow block in order of execution and the type of reference.
+	std::vector<std::pair<Declaration const*, DeclarationReferenceType>> declarationReferences;*/
 	/// If control flow returns in this node, the return statement is stored in returnStatement,
 	/// otherwise returnStatement is nullptr.
 	Return const* returnStatement = nullptr;
