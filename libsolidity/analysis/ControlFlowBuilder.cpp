@@ -283,6 +283,25 @@ bool ControlFlowBuilder::visitNode(ASTNode const& node)
 				variableDeclaration->value().get()
 			);
 	}
+	else if (auto const* variableDeclarationStatement = dynamic_cast<VariableDeclarationStatement const*>(&node))
+	{
+		for (auto const& var: variableDeclarationStatement->declarations())
+			if (var)
+				var->accept(*this);
+		if (variableDeclarationStatement->initialValue())
+		{
+			variableDeclarationStatement->initialValue()->accept(*this);
+			for (auto const& var: variableDeclarationStatement->declarations())
+				if (var)
+					// TODO: expand tuple expressions for accurate occurrence node.
+					m_currentNode->variableOccurrences.emplace_back(
+						var.get(),
+						VariableOccurrence::Kind::Assignment,
+						variableDeclarationStatement->initialValue()
+					);
+		}
+
+	}
 	else if (auto const* identifier = dynamic_cast<Identifier const*>(&node))
 		if (auto const* variableDeclaration = dynamic_cast<VariableDeclaration const*>(identifier->annotation().referencedDeclaration))
 			m_currentNode->variableOccurrences.emplace_back(
