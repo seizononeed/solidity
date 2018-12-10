@@ -81,10 +81,12 @@ matrix:
               - sudo add-apt-repository -y ppa:hvr/z3
               - sudo apt-get update -qq
           install:
-              - sudo apt-get install -qq g++-8
+              - sudo apt-get install -qq g++-8 gcc-8
               - sudo apt-get install -qq libboost1.67-dev
               - sudo apt-get install -qq libleveldb1
               - sudo apt-get install -qq libz3-dev
+              - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 90
+              - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 90
 
         # Docker target, which generates a statically linked alpine image
         - os: linux
