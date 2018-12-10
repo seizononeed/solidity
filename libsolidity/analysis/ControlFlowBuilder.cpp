@@ -378,7 +378,7 @@ bool ControlFlowBuilder::visit(ModifierInvocation const& _modifierInvocation)
 
 bool ControlFlowBuilder::visit(FunctionDefinition const& _functionDefinition)
 {
-	for(auto const& parameter: _functionDefinition.parameters())
+	for (auto const& parameter: _functionDefinition.parameters())
 		appendControlFlow(*parameter);
 
 	for (auto const& returnParameter: _functionDefinition.returnParameters())
