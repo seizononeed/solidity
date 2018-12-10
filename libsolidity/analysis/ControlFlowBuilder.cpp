@@ -300,7 +300,7 @@ bool ControlFlowBuilder::visitNode(ASTNode const& node)
 						variableDeclarationStatement->initialValue()
 					);
 		}
-
+		return false;
 	}
 	else if (auto const* identifier = dynamic_cast<Identifier const*>(&node))
 		if (auto const* variableDeclaration = dynamic_cast<VariableDeclaration const*>(identifier->annotation().referencedDeclaration))
