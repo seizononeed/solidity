@@ -2,10 +2,11 @@ pragma experimental SMTChecker;
 
 contract C
 {
-	mapping (bool => uint) map;
-	function f(uint x) public view {
-		assert(x != map[true]);
+	mapping (uint => uint) map;
+	function f() public {
+		map[1] = 111;
+		uint x = map[2];
+		map[1] = 112;
+		assert(map[2] == x);
 	}
 }
-// ----
-// Warning: (111-133): Assertion violation happens here
